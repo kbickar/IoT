@@ -1,17 +1,17 @@
 #define WIFI_SSID "<your WiFi>"
 #define WIFI_PASS "<your Wifi Password"
 
-# Remote debug server optional:
+// Remote debug server optional:
 #define DEBUG_HOST "<some ip/hostname>"
 #define DEBUG_PORT 3339
 
-# MQTT server details
+// MQTT server details
 #define MQTT_HOST "<some ip/hostname>"
 #define MQTT_USER "<mqtt user>"
 #define MQTT_PASS "<mqtt password>"
 
-# Hostname that shows up on network
+// Hostname that shows up on network
 #define HOSTNAME_PREF "Blinds-"
 
-# Room for mqtt topic (e.g. home/office/blinds/set)
+// Room for mqtt topic (e.g. home/office/blinds/set)
 #define ROOM "office"
