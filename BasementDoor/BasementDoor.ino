@@ -1,14 +1,8 @@
 
-#include <ESP8266WiFi.h>
-#include <ESP8266WiFiMulti.h>
-#include <ESP8266HTTPClient.h>
-#include <ArduinoJson.h>
-#include <ArduinoOTA.h>
-#include <PubSubClient.h>
 #include <PN532_HSU.h>
 #include <PN532.h>
 #include <DHT.h>
-
+#include <KDevice.h>
 #include "config.h"
     
 // Constants
@@ -28,21 +22,15 @@
 
 #define CODE_SCAN_DELAY   1000
 #define SENSOR_SCAN_DELAY   5*60*1000 // 5 minute
-#define UPDATE_WINDOW     5*60*1000 // 5 minute
 #define MAIL_DETECT_DELAY 10000
 #define SCAN_DELAY        1000
 #define SCAN_FAIL_DELAY   2000
 
 #define UNLOCK_TIME      10*1000
 
-#define MAX_RECONNECTS  5
 
-const char* mqtt_server = MQTT_HOST;
-long lastReconnectAttempt = 0;
-unsigned long mailDetectTime = 0;
 unsigned long lastCloseTime = 0;
 
-const char* statusTopic = "home/basement_door/status";
 const char* doorOpenTopic = "home/basement_door/state";
 const char* doorLockedTopic = "home/basement_door/deadbolt/state";
 const char* lockStateTopic = "home/basement_door/latch/state";
@@ -52,19 +40,8 @@ const char* lightSetTopic = "home/basement_door/door_bell/light/set";
 const char* lightRGBTopic = "home/basement_door/door_bell/light/rgb";
 const char* lightRGBSetTopic = "home/basement_door/door_bell/light/rgb/set";
 const char* scanTopic = "home/basement_door/scan";
-const char* sensorTopic = "home/basement_door/sensor";
-const char* resetTopic = "home/basement_door/reset";
-const char* debugTopic = "home/basement_door/debug";
 
 // One time sets
-const char compile_date[] = __DATE__ " " __TIME__;
-unsigned long start_time;
-
-String host_name(HOSTNAME_PREF);
-
-ESP8266WiFiMulti WiFiMulti;
-WiFiClient espClient;
-PubSubClient mqttClient(espClient);
 
 PN532_HSU pn532hsu(Serial);
 PN532 nfc(pn532hsu);
@@ -82,33 +59,9 @@ bool DoorLockedVal = false;
 bool lightOnVal = false;
 
 bool DoorLocked = false;
-
-bool statuses_sent = false;
-
 unsigned long lastCodeScan = 0;
 unsigned long lastSensorScan = 0;
-int reconnectCount = 0;
 
-// Debugging
-String S = "";
-bool debugMode = true;
-void debug(String s)
-{
-  if (!debugMode) return;
-  Serial.println(s);
-  WiFiUDP udpClient;
-  udpClient.beginPacket(DEBUG_HOST, DEBUG_PORT);
-  udpClient.write(s.c_str(), s.length() + 1);
-  udpClient.endPacket();
-  yield();
-}
-
-void reset()
-{
-  debug(S+"Restarting... (Heap="+ESP.getFreeHeap()+", Cycles="+ESP.getCycleCount()+")");
-  delay(2);
-  ESP.restart();
-}
 
 // Returns True if button is pressed on pin
 boolean buttonPressed(int pin)
@@ -211,38 +164,7 @@ void UnLockDoor(){
     mqttClient.publish(lockStateTopic, "LOCK");
 }
 
-
-bool reconnect() {
-  debug("Attempting MQTT connection ["+host_name+"] ...");
-  // Attempt to connect
-  if (mqttClient.connect(host_name.c_str(), MQTT_USER, MQTT_PASS, statusTopic, 0, 1, "offline")) {
-    // Once connected, resubscribe
-    mqttClient.subscribe(lockDoorTopic);
-    mqttClient.subscribe(lightSetTopic);
-    mqttClient.subscribe(lightRGBSetTopic);
-    mqttClient.subscribe(resetTopic);
-    mqttClient.subscribe(debugTopic);    
-    debug("connected");
-    // Send states on connection
-    mqttClient.publish(lockStateTopic, "LOCK");
-    DoorLockedVal = !DoorLockedVal;
-    DoorClosedVal = !DoorClosedVal;
-    lastSensorScan = 0;
-    mqttClient.publish(statusTopic, "online");
-    return mqttClient.connected();
-  }
-  return false;
-}
-
-// Handle mqtt events I'm subscribed to
-void callback(char* topic, byte* payload, unsigned int length) {
-  String s = S+"Message arrived ["+topic+"] " ;
-  String pl = "";
-  for (int i = 0; i < length; i++) {
-    pl += (char)payload[i];
-  }
-  debug(s+pl);
-
+void mqtt_callback(char* topic, String pl){
   // Toggle Lock
   if (strcmp(topic, lockDoorTopic) == 0){
     if(pl =="UNLOCK") UnLockDoor();
@@ -267,15 +189,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
     bool g = 64 < pl.substring(commaIndex + 1, secondCommaIndex).toInt();
     bool b = 64 < pl.substring(secondCommaIndex + 1).toInt();
     DoorBellColor(r,g,b);
-  }
-  // Reset
-  else if (strcmp(topic, resetTopic) == 0){
-    reset();
-  }
-  // Debug
-  else if (strcmp(topic, debugTopic) == 0){
-    debugMode = (pl == "1");
-  }
+  } 
 }
 
 void setup() {
@@ -307,27 +221,8 @@ void setup() {
   
   lastCodeScan = 0;
   lastSensorScan = 0;
-  reconnectCount = 0;
 
-  // Set Hostname.
-  host_name += String(ESP.getChipId(), HEX);
-  WiFi.hostname(host_name);
-  WiFiMulti.addAP(WIFI_SSID, WIFI_PASS);
-
-  Serial.print("Wait for WiFi...");
-
-  while (WiFiMulti.run() != WL_CONNECTED) {
-    Serial.print(".");
-    delay(500);
-  }
-
-  debug("");
-  Serial.println("WiFi connected");
-  debug("Compile Date:");
-  debug(compile_date);
-  debug(S + "Chip ID: 0x" + String(ESP.getChipId(), HEX));
-  debug("Hostname: " + host_name);
-  debug("IP address: " + WiFi.localIP().toString());
+  KDevice_setup(ROOM, HOSTNAME_PREF, MQTT_HOST, WIFI_SSID, WIFI_PASS, DEBUG_HOST, DEBUG_PORT, &mqtt_callback);
 
   nfc.begin();
 
@@ -347,10 +242,6 @@ void setup() {
 
   dht.begin();
 
-  // Start OTA server.
-  ArduinoOTA.setHostname((const char *)host_name.c_str());
-  ArduinoOTA.begin();
-
   delay(20);
   DoorBellColor(1,0,0);
   delay(1000);
@@ -361,10 +252,6 @@ void setup() {
   DoorBellColor(0,0,0);
   delay(100);
   DoorBellColor(0,0,1);
-  
-  mqttClient.setServer(mqtt_server, 1883);
-  mqttClient.setCallback(callback);
-  reconnect();
   digitalWrite(IndicatorPin, LOW);
 
 }
@@ -375,6 +262,17 @@ uint32_t bytesToInt(uint8_t bytes[]){
     ret += bytes[i] << (8*i);
   }
   return ret;
+}
+
+void mqtt_connect(){
+    mqttClient.subscribe(lockDoorTopic);
+    mqttClient.subscribe(lightSetTopic);
+    mqttClient.subscribe(lightRGBSetTopic);
+    // Send states on connection
+    mqttClient.publish(lockStateTopic, "LOCK");
+    DoorLockedVal = !DoorLockedVal;
+    DoorClosedVal = !DoorClosedVal;
+    lastSensorScan = 0;   
 }
 
 void loop() {
@@ -400,29 +298,5 @@ void loop() {
       BlinkDoorBell(3, 1,0,0);
   }
   
-  // Handle OTA server.
-  if  (millis() - start_time < UPDATE_WINDOW){
-    ArduinoOTA.handle();
-  }
-  else if (!statuses_sent){
-    statuses_sent = true;
-    mqttClient.publish(doorLockedTopic, (DoorLockedVal)?"ON":"OFF");
-    mqttClient.publish(doorOpenTopic, (!DoorClosedVal)?"ON":"OFF");    
-  }
-  
-  if (!mqttClient.connected()) {
-    long now = millis();
-    if (now - lastReconnectAttempt > 5000) {
-      lastReconnectAttempt = now;
-      reconnectCount++;
-      // Attempt to reconnect
-      if (reconnect()) {
-        lastReconnectAttempt = 0;
-        reconnectCount = 0;
-      }
-    }
-  } else {
-    // Client connected
-    mqttClient.loop();
-  }
+  KDevice_loop(MQTT_USER, MQTT_PASS, mqtt_connect);
 }
