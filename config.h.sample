@@ -11,7 +11,7 @@
 #define MQTT_PASS "<mqtt password>"
 
 // Hostname that shows up on network
-#define HOSTNAME_PREF "Blinds-"
+#define HOSTNAME_PREF "Blinds"
 
 // Room for mqtt topic (e.g. home/office/blinds/set)
 #define ROOM "office"
