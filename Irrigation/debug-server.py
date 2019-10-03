@@ -1,5 +1,6 @@
 import socket
 import traceback
+import datetime
 
 SERVER_IP = '127.0.0.1'
 SERVER_PORT = 3339
@@ -22,11 +23,11 @@ class ServerSocket():
             except Exception, err:
                 #traceback.print_exc()
                 pass # ignore bad messages
-
+            
     # handle message received as server
     def handle_message(self, data, addr):
-        print data
-
+        t = datetime.datetime.now().strftime('%H:%M:%S')
+        print t,data
 
             
 

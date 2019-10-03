@@ -23,8 +23,8 @@
 #define MOISTURE_CHECK_DELAY    10*60*1000 // 10 minute
 #define MOISTURE_WATERING_CHECK_DELAY 5*60*1000 // 5 minute
 
-#define MAX_WATER_TIME		60*60*1000 // 1 hour
-#define EXTRA_MOIST_DELAY	12*60*1000 // 12 minute
+#define MAX_WATER_TIME		30*60*1000 // 30 min
+#define EXTRA_MOIST_DELAY	10*60*1000 // 10 minute
 
 #define MIN_PRESSURE1		100
 #define MAX_PRESSURE1		1000
@@ -127,6 +127,7 @@ void UpdateMoisture(){
 }
 
 void SetValves(){
+    if (valve1 == OPEN) valve2 = CLOSED;
     digitalWrite(VALVE1_PIN, valve1);
     digitalWrite(VALVE2_PIN, valve2);
     mqttClient.publish(valve1Topic, (valve1)?"OPEN":"CLOSED");
@@ -152,6 +153,10 @@ void StartWateringPlants(){
 // Change to secondary water source
 void ChangeWaterSource(){
     debug("changing water source");
+    valve1 = CLOSED;
+    valve2 = CLOSED;
+    SetValves();
+    delay(5000);
     valve1 = CLOSED;
     valve2 = OPEN;
     SetValves();
@@ -181,7 +186,7 @@ void WaterPlants(){
 }
 
 // Handle mqtt events I'm subscribed to
-void mqtt_callback(char* topic, byte* payload, unsigned int length) {
+void mqtt_callback(char* topic, String pl) {
     // Water plants command
     if (strcmp(topic, waterPlantsTopic) == 0){
         if(pl == "1"){  
@@ -244,16 +249,8 @@ void loop() {
 	// Check temp/humidity
 	if (millis() - last_sensor_scan > SENSOR_SCAN_DELAY) 
 		UpdateTemp();
-	// Check rain barrel levels
-	if (millis() - last_level_check > LEVEL_SCAN_DELAY)
-		UpdateWaterLevels();
 	// If we're watering the gardern
 	if (watering){
-		
-		// If rain barrel empties while watering, swap to second source
-		if (valve1 == OPEN and water_level1 < BARREL1_LOW){
-			ChangeWaterSource();
-		}
 		
 		// Check soil moisture levels
 		if (millis() - last_moisture_check > MOISTURE_WATERING_CHECK_DELAY) {
@@ -262,7 +259,13 @@ void loop() {
 			if (!old_moist && isMoist()){
 				moist_start = millis();
 			}
+      UpdateWaterLevels();
 		}
+   
+    // If rain barrel empties while watering, swap to second source
+    if (valve1 == OPEN and water_level1 < BARREL1_LOW){
+      ChangeWaterSource();
+    }
 		
 		// Finished watering
 		if (isMoist() && millis() - moist_start > EXTRA_MOIST_DELAY ||
@@ -273,6 +276,9 @@ void loop() {
 		// Check soil moisture levels
 		if (millis() - last_moisture_check > MOISTURE_CHECK_DELAY) 
 			UpdateMoisture();		
+    // Check rain barrel levels
+    if (millis() - last_level_check > LEVEL_SCAN_DELAY)
+      UpdateWaterLevels();
 	}
   if ((valve1 == OPEN || valve2 == OPEN) && !watering){
     watering = true;
