@@ -40,6 +40,7 @@ const char* lightSetTopic = "home/basement_door/door_bell/light/set";
 const char* lightRGBTopic = "home/basement_door/door_bell/light/rgb";
 const char* lightRGBSetTopic = "home/basement_door/door_bell/light/rgb/set";
 const char* scanTopic = "home/basement_door/scan";
+const char* sensorTopic = "home/basement_door/sensor";
 
 // One time sets
 
@@ -217,7 +218,6 @@ void setup() {
   DoorLockedVal = false;
   
   lightOnVal = false;
-  statuses_sent = false;
   
   lastCodeScan = 0;
   lastSensorScan = 0;
